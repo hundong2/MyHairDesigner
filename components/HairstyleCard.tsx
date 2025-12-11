@@ -4,10 +4,11 @@ import { Hairstyle } from '../types';
 interface Props {
   styleData: Hairstyle;
   isSelected: boolean;
+  isRecommended?: boolean;
   onSelect: (id: string) => void;
 }
 
-export const HairstyleCard: React.FC<Props> = ({ styleData, isSelected, onSelect }) => {
+export const HairstyleCard: React.FC<Props> = ({ styleData, isSelected, isRecommended, onSelect }) => {
   const getBadgeColor = (tag?: string) => {
     switch(tag) {
       case 'New': return 'bg-blue-500';
@@ -20,8 +21,12 @@ export const HairstyleCard: React.FC<Props> = ({ styleData, isSelected, onSelect
   return (
     <div 
       onClick={() => onSelect(styleData.id)}
-      className={`relative cursor-pointer rounded-xl overflow-hidden transition-all duration-300 transform hover:scale-105 border-2 ${
-        isSelected ? 'border-pink-500 shadow-lg shadow-pink-200' : 'border-transparent shadow-md bg-white'
+      className={`relative cursor-pointer rounded-xl overflow-hidden transition-all duration-300 transform hover:scale-105 border-4 ${
+        isSelected 
+          ? 'border-pink-500 shadow-xl shadow-pink-200' 
+          : isRecommended 
+            ? 'border-green-400 shadow-lg shadow-green-100' 
+            : 'border-transparent shadow-md bg-white'
       }`}
     >
       <div className="relative h-48 w-full">
@@ -35,6 +40,13 @@ export const HairstyleCard: React.FC<Props> = ({ styleData, isSelected, onSelect
         {styleData.tag && (
           <div className={`absolute top-2 left-2 px-2 py-0.5 text-xs font-bold text-white rounded-full shadow-sm ${getBadgeColor(styleData.tag)}`}>
             {styleData.tag}
+          </div>
+        )}
+
+        {/* AI Recommended Badge */}
+        {isRecommended && (
+          <div className="absolute top-2 right-2 px-2 py-0.5 text-xs font-bold bg-green-500 text-white rounded-full shadow-lg flex items-center gap-1">
+             <span>✨ AI Match</span>
           </div>
         )}
 

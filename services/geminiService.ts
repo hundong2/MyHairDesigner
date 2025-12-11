@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
-import { Coordinates, Salon } from "../types";
+import { Coordinates, Salon, AnalysisResult } from "../types";
+import { TRENDING_HAIRSTYLES } from "../constants";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
@@ -23,6 +24,57 @@ const extractSalons = (groundingChunks: any[]): Salon[] => {
 
   return salons;
 };
+
+export const analyzeUserFace = async (userImageBase64: string): Promise<AnalysisResult> => {
+  try {
+    const model = 'gemini-2.5-flash';
+    
+    // Get all available IDs to help Gemini choose valid recommendations
+    const availableIds = TRENDING_HAIRSTYLES.map(h => h.id).join(', ');
+
+    const prompt = `
+      Act as a world-class hair stylist consultant.
+      Analyze the face in this image.
+      
+      1. Determine the Face Shape (e.g., Oval, Round, Square, Heart, Long).
+      2. Recommend 2 hairstyles from this specific list of IDs that would best suit this face shape: [${availableIds}].
+      3. Explain briefly why these styles suit the user's features.
+
+      Return the response in this JSON format ONLY:
+      {
+        "faceShape": "Shape Name",
+        "recommendedStyleIds": ["id1", "id2"],
+        "reasoning": "Your reasoning here..."
+      }
+    `;
+
+    const response = await ai.models.generateContent({
+      model,
+      contents: {
+        parts: [
+          { inlineData: { data: userImageBase64, mimeType: 'image/jpeg' } },
+          { text: prompt }
+        ]
+      },
+      config: {
+        responseMimeType: 'application/json'
+      }
+    });
+
+    const text = response.text || "{}";
+    const json = JSON.parse(text);
+
+    return {
+      faceShape: json.faceShape || "Unknown",
+      recommendedStyleIds: json.recommendedStyleIds || [],
+      reasoning: json.reasoning || "Based on your features, we recommend these styles."
+    };
+
+  } catch (error) {
+    console.error("Face analysis failed:", error);
+    throw new Error("Could not analyze face.");
+  }
+}
 
 export const generateHairstyleImage = async (
   styleName: string,

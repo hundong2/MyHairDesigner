@@ -25,3 +25,11 @@ export interface StylingResult {
   pros?: string[];
   cons?: string[];
 }
+
+export interface AnalysisResult {
+  faceShape: string;
+  hairTexture?: string;
+  colorTone?: string;
+  recommendedStyleIds: string[];
+  reasoning: string;
+}

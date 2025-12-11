@@ -83,9 +83,31 @@ export const SalonFinder: React.FC<Props> = ({ styleName }) => {
         </div>
       )}
 
-      {salonText && (
-        <div className="bg-white p-8 rounded-2xl shadow-lg prose prose-pink max-w-none">
-          <ReactMarkdown>{salonText}</ReactMarkdown>
+      {salonText && location && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* AI Recommendation Text */}
+          <div className="bg-white p-8 rounded-2xl shadow-lg prose prose-pink max-w-none h-fit">
+            <h3 className="text-xl font-bold text-slate-800 not-prose mb-4 flex items-center gap-2">
+              <span className="text-2xl">✂️</span> AI Recommendations
+            </h3>
+            <ReactMarkdown>{salonText}</ReactMarkdown>
+          </div>
+
+          {/* Google Maps Embed */}
+          <div className="bg-white p-2 rounded-2xl shadow-lg h-[500px] overflow-hidden relative">
+             <iframe
+              width="100%"
+              height="100%"
+              style={{ border: 0, borderRadius: '1rem' }}
+              loading="lazy"
+              allowFullScreen
+              referrerPolicy="no-referrer-when-downgrade"
+              src={`https://maps.google.com/maps?q=${encodeURIComponent(styleName + " hair salon")}&sll=${location.latitude},${location.longitude}&z=13&output=embed`}
+            ></iframe>
+            <div className="absolute bottom-4 right-4 bg-white px-3 py-1 rounded-full shadow-md text-xs font-semibold text-slate-600">
+               Based on your location
+            </div>
+          </div>
         </div>
       )}
     </div>

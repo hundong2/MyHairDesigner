@@ -3,30 +3,58 @@ import { TRENDING_HAIRSTYLES } from './constants';
 import { HairstyleCard } from './components/HairstyleCard';
 import { ResultView } from './components/ResultView';
 import { SalonFinder } from './components/SalonFinder';
-import { generateHairstyleImage, generateStyleAnalysis } from './services/geminiService';
-import { StylingResult } from './types';
+import { generateHairstyleImage, generateStyleAnalysis, analyzeUserFace } from './services/geminiService';
+import { StylingResult, AnalysisResult } from './types';
 
 function App() {
   const [selectedStyleId, setSelectedStyleId] = useState<string | null>(null);
   const [userImage, setUserImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<StylingResult | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const stylesSectionRef = useRef<HTMLDivElement>(null);
 
   const selectedStyle = TRENDING_HAIRSTYLES.find(s => s.id === selectedStyleId);
 
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         const base64String = reader.result as string;
-        // Remove data URL prefix for API processing if needed, but Gemini usually handles standard base64 or requires raw bytes.
-        // For inlineData, we need the base64 string without the prefix.
         const base64Data = base64String.split(',')[1];
         setUserImage(base64Data);
+        
+        // Auto-trigger analysis when image is uploaded
+        await runFaceAnalysis(base64Data);
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const runFaceAnalysis = async (imageData: string) => {
+    setIsAnalyzing(true);
+    try {
+      const analysis = await analyzeUserFace(imageData);
+      setAnalysisResult(analysis);
+      
+      // If we have recommended styles, auto-select the first one if none selected
+      if (analysis.recommendedStyleIds.length > 0 && !selectedStyleId) {
+        setSelectedStyleId(analysis.recommendedStyleIds[0]);
+      }
+      
+      // Scroll to styles
+      setTimeout(() => {
+        stylesSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 500);
+
+    } catch (e) {
+      console.error("Analysis failed", e);
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -61,7 +89,9 @@ function App() {
     setSelectedStyleId(null);
     setUserImage(null);
     setResult(null);
+    setAnalysisResult(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
@@ -75,7 +105,7 @@ function App() {
                     Own my hair Designer
                 </h1>
             </div>
-            {result && (
+            {(result || userImage) && (
                 <button 
                     onClick={handleReset}
                     className="text-sm font-medium text-slate-500 hover:text-pink-600 transition-colors"
@@ -88,85 +118,103 @@ function App() {
 
       <main className="max-w-5xl mx-auto px-6 pt-10">
         
+        {/* Step 0: Consultation / Upload (Moved to top for "Designer" feel) */}
+        {!result && !isProcessing && (
+          <div className="mb-12 bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-8 md:p-12 text-white shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-pink-500 rounded-full blur-3xl opacity-20"></div>
+            <div className="relative z-10 md:w-2/3">
+               <h2 className="text-3xl md:text-4xl font-bold mb-4">Let AI Design Your Perfect Look</h2>
+               <p className="text-slate-300 text-lg mb-8">
+                 {userImage 
+                   ? "Photo uploaded! We're analyzing your face shape to find the perfect match..." 
+                   : "Upload a selfie. Our AI will analyze your face shape and recommend styles that suit you best."}
+               </p>
+               
+               {!userImage && (
+                  <div className="relative inline-block group">
+                    <button className="bg-white text-slate-900 font-bold py-4 px-8 rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2">
+                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                       Upload Your Selfie
+                    </button>
+                    <input 
+                      ref={fileInputRef}
+                      type="file" 
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                  </div>
+               )}
+
+               {isAnalyzing && (
+                 <div className="mt-6 flex items-center gap-3 text-pink-300 animate-pulse">
+                    <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    <span>Analyzing face shape & features...</span>
+                 </div>
+               )}
+
+               {analysisResult && (
+                 <div className="mt-8 bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 animate-fade-in">
+                    <div className="flex items-center gap-2 mb-2 text-pink-300 font-bold uppercase tracking-wider text-sm">
+                      ✨ Analysis Complete
+                    </div>
+                    <div className="text-xl font-bold mb-2">
+                      You have a <span className="text-pink-400">{analysisResult.faceShape}</span> face shape.
+                    </div>
+                    <p className="text-slate-200 text-sm leading-relaxed">
+                      {analysisResult.reasoning}
+                    </p>
+                 </div>
+               )}
+            </div>
+          </div>
+        )}
+
         {/* Step 1: Style Selection */}
         {!result && !isProcessing && (
-            <>
-                <div className="mb-8 text-center">
-                    <h2 className="text-3xl font-extrabold text-slate-900 mb-3">Choose Your New Look</h2>
-                    <p className="text-slate-600 text-lg">Select from the latest trends and popular rankings.</p>
+            <div ref={stylesSectionRef}>
+                <div className="mb-8 flex items-end justify-between">
+                    <div>
+                        <h2 className="text-2xl font-bold text-slate-900">
+                          {analysisResult ? "Recommended For You" : "Trending Styles"}
+                        </h2>
+                        <p className="text-slate-600">
+                          {analysisResult ? "We've highlighted styles that match your face shape." : "Choose a style to try on."}
+                        </p>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
                 {TRENDING_HAIRSTYLES.map((style) => (
                     <HairstyleCard 
-                    key={style.id} 
-                    styleData={style} 
-                    isSelected={selectedStyleId === style.id}
-                    onSelect={setSelectedStyleId}
+                        key={style.id} 
+                        styleData={style} 
+                        isSelected={selectedStyleId === style.id}
+                        isRecommended={analysisResult?.recommendedStyleIds.includes(style.id)}
+                        onSelect={setSelectedStyleId}
                     />
                 ))}
                 </div>
-            </>
+            </div>
         )}
 
-        {/* Step 2: Upload & Action Area */}
+        {/* Step 2: Generate Action */}
         {selectedStyleId && !result && !isProcessing && (
-          <div className="bg-white rounded-2xl shadow-xl p-8 mb-12 animate-fade-in-up">
-            <div className="flex flex-col md:flex-row items-center gap-8">
-                
-                {/* Upload Area */}
-                <div className="flex-1 w-full">
-                    <h3 className="text-lg font-bold mb-4">Upload Your Photo (Optional)</h3>
-                    <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:bg-slate-50 transition-colors relative">
-                        <input 
-                            ref={fileInputRef}
-                            type="file" 
-                            accept="image/*"
-                            onChange={handleImageUpload}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        />
-                        {userImage ? (
-                            <div className="flex flex-col items-center">
-                                <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-2">
-                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                                </div>
-                                <span className="font-medium text-green-700">Photo Uploaded!</span>
-                                <span className="text-xs text-slate-400 mt-1">Click to change</span>
-                            </div>
-                        ) : (
-                            <div className="flex flex-col items-center">
-                                <svg className="w-10 h-10 text-slate-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                </svg>
-                                <span className="text-slate-600 font-medium">Click to upload your selfie</span>
-                                <span className="text-xs text-slate-400 mt-2">Or skip to use an AI model</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Info Text */}
-                <div className="flex-1 w-full space-y-4">
-                    <div className="bg-slate-50 p-4 rounded-lg">
-                        <h4 className="font-semibold text-slate-800 mb-1">
-                            {userImage ? "✨ Custom Makeover" : "🤖 AI Model Mode"}
-                        </h4>
-                        <p className="text-sm text-slate-600">
-                            {userImage 
-                                ? `We will blend the ${selectedStyle?.name} onto your uploaded photo using advanced AI.` 
-                                : `We will generate a hyper-realistic AI avatar wearing the ${selectedStyle?.name} so you can see the vibe.`}
-                        </p>
-                    </div>
-
-                    <button 
-                        onClick={handleGenerate}
-                        className="w-full py-4 bg-gradient-to-r from-pink-600 to-violet-600 text-white font-bold text-lg rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all"
-                    >
-                        Generate Style
-                    </button>
-                </div>
-            </div>
-          </div>
+           <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t z-40 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] animate-slide-up">
+              <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+                  <div className="hidden md:block">
+                      <p className="text-sm text-slate-500">Selected Style</p>
+                      <p className="font-bold text-slate-800">{selectedStyle?.name}</p>
+                  </div>
+                  <button 
+                      onClick={handleGenerate}
+                      className="flex-1 md:flex-none md:w-64 py-4 bg-slate-900 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-slate-800 transform hover:-translate-y-0.5 transition-all flex justify-center items-center gap-2"
+                  >
+                      <span>Generate Look</span>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                  </button>
+              </div>
+           </div>
         )}
 
         {/* Step 3: Results */}
