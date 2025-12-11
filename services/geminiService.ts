@@ -6,14 +6,16 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // ... (previous helper code remains implicitly, but providing full file content for correctness) ...
 
-export const analyzeUserFace = async (userImageBase64: string): Promise<AnalysisResult> => {
+export const analyzeUserFace = async (userImageBase64: string, gender: 'male' | 'female'): Promise<AnalysisResult> => {
   try {
     const model = 'gemini-2.5-flash';
-    const availableIds = TRENDING_HAIRSTYLES.map(h => h.id).join(', ');
+    // Filter available IDs by the selected gender
+    const availableStyles = TRENDING_HAIRSTYLES.filter(h => h.gender === gender);
+    const availableIds = availableStyles.map(h => h.id).join(', ');
 
     const prompt = `
       Act as a world-class hair stylist consultant.
-      Analyze the face in this image.
+      Analyze the face in this image. The user identifies as ${gender}.
       
       1. Determine the Face Shape (e.g., Oval, Round, Square, Heart, Long).
       2. Recommend 2 hairstyles from this specific list of IDs that would best suit this face shape: [${availableIds}].
@@ -168,6 +170,8 @@ export const searchNearbySalons = async (
 ): Promise<string> => {
   try {
     const model = 'gemini-2.5-flash';
+    // Prompt updated to request a standard list format instead of a table.
+    // This ensures compatibility with standard markdown renderers without needing GFM extensions.
     const prompt = `
       Find top-rated hair salons near my location that would be good for getting a "${styleName}".
       Sort them by highest star rating.
@@ -179,7 +183,9 @@ export const searchNearbySalons = async (
       3. Address (Approximate)
       4. A brief 1-sentence reason why it's good for this specific style.
 
-      Return the result as a Markdown Table with columns: Salon Name, Rating, Address, Why it's good.
+      Return the result as a formatted list.
+      For each salon, use a Heading 3 (###) for the name, followed by bullet points for Rating, Address, and Why it's good.
+      Add a horizontal rule (---) between salons.
     `;
 
     const response = await ai.models.generateContent({

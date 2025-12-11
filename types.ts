@@ -3,6 +3,7 @@ export interface Hairstyle {
   name: string;
   description: string;
   imageUrl: string;
+  gender: 'male' | 'female';
   tag?: 'New' | 'Popular' | 'Trending';
 }
 

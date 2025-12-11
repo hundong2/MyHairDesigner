@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { TRENDING_HAIRSTYLES } from './constants';
 import { HairstyleCard } from './components/HairstyleCard';
 import { ResultView } from './components/ResultView';
@@ -15,9 +15,15 @@ function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<StylingResult | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [gender, setGender] = useState<'female' | 'male'>('female');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const stylesSectionRef = useRef<HTMLDivElement>(null);
+
+  // Filter styles based on gender selection
+  const filteredStyles = useMemo(() => {
+    return TRENDING_HAIRSTYLES.filter(style => style.gender === gender);
+  }, [gender]);
 
   const selectedStyle = TRENDING_HAIRSTYLES.find(s => s.id === selectedStyleId);
 
@@ -50,7 +56,7 @@ function App() {
   const runFaceAnalysis = async (imageData: string) => {
     setIsAnalyzing(true);
     try {
-      const analysis = await analyzeUserFace(imageData);
+      const analysis = await analyzeUserFace(imageData, gender);
       setAnalysisResult(analysis);
       
       // If we have recommended styles, auto-select the first one if none selected
@@ -104,6 +110,15 @@ function App() {
     setAnalysisResult(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // When gender changes, we might want to re-run analysis if image exists, or just clear selection
+  const handleGenderChange = async (newGender: 'male' | 'female') => {
+    setGender(newGender);
+    setSelectedStyleId(null);
+    if (userImage) {
+        await runFaceAnalysis(userImage);
+    }
   };
 
   return (
@@ -210,16 +225,33 @@ function App() {
         {/* Step 1: Style Selection */}
         {!result && !isProcessing && (
             <div ref={stylesSectionRef}>
-                <div className="mb-6 flex items-end justify-between">
+                <div className="mb-6 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
                     <div>
                         <h2 className="text-2xl font-bold text-slate-900">
-                          {analysisResult ? "Recommended Styles" : "Trending Styles"}
+                          {analysisResult ? "Recommended Styles" : "Choose Your Style"}
                         </h2>
+                        <p className="text-slate-500 text-sm mt-1">Select a style to simulate.</p>
+                    </div>
+                    
+                    {/* Gender Toggle */}
+                    <div className="bg-slate-100 p-1 rounded-lg inline-flex items-center">
+                       <button
+                         onClick={() => handleGenderChange('female')}
+                         className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${gender === 'female' ? 'bg-white shadow text-pink-600' : 'text-slate-500 hover:text-slate-700'}`}
+                       >
+                         Women
+                       </button>
+                       <button
+                         onClick={() => handleGenderChange('male')}
+                         className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${gender === 'male' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+                       >
+                         Men
+                       </button>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-                {TRENDING_HAIRSTYLES.map((style) => (
+                {filteredStyles.map((style) => (
                     <HairstyleCard 
                         key={style.id} 
                         styleData={style} 
