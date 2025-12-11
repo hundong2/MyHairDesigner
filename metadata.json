@@ -1,0 +1,7 @@
+{
+  "name": "My hair Designer",
+  "description": "Professional AI Hair Styling & Salon Finder App",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
