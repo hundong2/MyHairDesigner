@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { Coordinates, Salon, AnalysisResult } from "../types";
+import { Coordinates, Salon, AnalysisResult, ChatMessage } from "../types";
 import { TRENDING_HAIRSTYLES } from "../constants";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -11,18 +11,12 @@ const extractSalons = (groundingChunks: any[]): Salon[] => {
   // Filter for chunks that have map data
   const salons: Salon[] = [];
   
-  groundingChunks.forEach(chunk => {
-    if (chunk.web?.uri && chunk.web?.title) {
-        // Fallback for web results if map specific isn't structured well
-         salons.push({
-            title: chunk.web.title,
-            websiteUri: chunk.web.uri,
-            rating: 0 // Web chunks might not have rating easily accessible
-         });
-    }
-  });
-
-  return salons;
+  // Note: The structure of groundingChunks depends on the response.
+  // We will rely on the model parsing the data into the text response or use a specific parser if we enforced JSON schema for salons.
+  // Since we are asking for specific format in prompt (though previous prompt returned text),
+  // for the robust implementation in this iteration, we relied on markdown text.
+  // However, if we were to parse strict objects:
+  return salons; 
 };
 
 export const analyzeUserFace = async (userImageBase64: string): Promise<AnalysisResult> => {
@@ -191,16 +185,23 @@ export const searchNearbySalons = async (
   styleName: string,
   coords: Coordinates
 ): Promise<string> => {
-    // Note: returning string (markdown) because Google Maps grounding works best returning the model's text 
-    // which contains the grounding metadata links implicitly in the text response or we can parse chunks.
-    // For this app, we will display the model's textual recommendation which usually includes links.
   try {
     const model = 'gemini-2.5-flash';
     
+    // Updated prompt to ask for JSON to make it easier to parse or display cleanly if we were parsing.
+    // For now, we will ask for a formatted table in Markdown for better display.
     const prompt = `
       Find top-rated hair salons near my location that would be good for getting a "${styleName}".
       Sort them by highest star rating.
-      List the top 3 salons with their rating and a brief reason why.
+      List the top 3 salons.
+      
+      For each salon, provide:
+      1. Name
+      2. Rating (Stars)
+      3. Address (Approximate)
+      4. A brief 1-sentence reason why it's good for this specific style.
+
+      Return the result as a Markdown Table with columns: Salon Name, Rating, Address, Why it's good.
     `;
 
     const response = await ai.models.generateContent({
@@ -225,3 +226,34 @@ export const searchNearbySalons = async (
     return "Unable to search for salons at this moment. Please check your location settings.";
   }
 };
+
+export const getChatResponse = async (
+    history: ChatMessage[], 
+    newMessage: string,
+    context: { styleName: string, faceShape?: string }
+): Promise<string> => {
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const chat = ai.chats.create({
+            model: 'gemini-2.5-flash',
+            config: {
+                systemInstruction: `You are a friendly and expert personal hair stylist. 
+                The user has just virtually tried on a "${context.styleName}" hairstyle. 
+                Their face shape is "${context.faceShape || 'unknown'}".
+                Answer their questions about maintenance, styling products, styling techniques, and whether this style suits their lifestyle.
+                Keep answers concise (under 3 sentences) unless asked for details.
+                Be encouraging but honest.`
+            },
+            history: history.map(msg => ({
+                role: msg.role,
+                parts: [{ text: msg.text }]
+            }))
+        });
+
+        const result = await chat.sendMessage({ message: newMessage });
+        return result.text;
+    } catch (e) {
+        console.error("Chat error", e);
+        return "I'm having a little trouble connecting to the styling database right now. Try again in a moment!";
+    }
+}

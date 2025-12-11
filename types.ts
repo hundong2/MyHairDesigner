@@ -17,6 +17,7 @@ export interface Salon {
   rating?: number;
   userRatingCount?: number;
   websiteUri?: string;
+  reason?: string;
 }
 
 export interface StylingResult {
@@ -32,4 +33,9 @@ export interface AnalysisResult {
   colorTone?: string;
   recommendedStyleIds: string[];
   reasoning: string;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'model';
+  text: string;
 }

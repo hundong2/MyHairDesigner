@@ -3,8 +3,10 @@ import { TRENDING_HAIRSTYLES } from './constants';
 import { HairstyleCard } from './components/HairstyleCard';
 import { ResultView } from './components/ResultView';
 import { SalonFinder } from './components/SalonFinder';
+import { SmartGuide } from './components/SmartGuide';
 import { generateHairstyleImage, generateStyleAnalysis, analyzeUserFace } from './services/geminiService';
 import { StylingResult, AnalysisResult } from './types';
+import { resizeImage } from './utils/imageHelpers';
 
 function App() {
   const [selectedStyleId, setSelectedStyleId] = useState<string | null>(null);
@@ -19,19 +21,29 @@ function App() {
 
   const selectedStyle = TRENDING_HAIRSTYLES.find(s => s.id === selectedStyleId);
 
+  // Determine current step for the Smart Guide
+  const currentStep = result 
+    ? 4 
+    : selectedStyleId 
+      ? 3 
+      : userImage 
+        ? 2 
+        : 1;
+
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64String = reader.result as string;
-        const base64Data = base64String.split(',')[1];
-        setUserImage(base64Data);
+      try {
+        // Performance: Resize image before processing to save bandwidth and speed up Gemini response
+        const resizedBase64 = await resizeImage(file);
+        setUserImage(resizedBase64);
         
         // Auto-trigger analysis when image is uploaded
-        await runFaceAnalysis(base64Data);
-      };
-      reader.readAsDataURL(file);
+        await runFaceAnalysis(resizedBase64);
+      } catch (error) {
+        console.error("Error processing image:", error);
+        alert("Could not process image. Please try another one.");
+      }
     }
   };
 
@@ -102,7 +114,7 @@ function App() {
             <div className="flex items-center gap-2">
                 <div className="w-8 h-8 bg-gradient-to-tr from-pink-500 to-violet-500 rounded-lg"></div>
                 <h1 className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-pink-600 to-violet-600">
-                    Own my hair Designer
+                    My hair Designer
                 </h1>
             </div>
             {(result || userImage) && (
@@ -118,17 +130,40 @@ function App() {
 
       <main className="max-w-5xl mx-auto px-6 pt-10">
         
+        {/* Smart Guide System */}
+        {!result && !isProcessing && (
+           <SmartGuide step={currentStep as 1|2|3|4} />
+        )}
+        
         {/* Step 0: Consultation / Upload (Moved to top for "Designer" feel) */}
         {!result && !isProcessing && (
-          <div className="mb-12 bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-8 md:p-12 text-white shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-pink-500 rounded-full blur-3xl opacity-20"></div>
+          <div className={`mb-12 bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-8 md:p-12 text-white shadow-2xl relative overflow-hidden transition-all duration-500 ${userImage ? 'h-auto py-8' : ''}`}>
+            {!userImage && <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-pink-500 rounded-full blur-3xl opacity-20"></div>}
+            
             <div className="relative z-10 md:w-2/3">
-               <h2 className="text-3xl md:text-4xl font-bold mb-4">Let AI Design Your Perfect Look</h2>
-               <p className="text-slate-300 text-lg mb-8">
-                 {userImage 
-                   ? "Photo uploaded! We're analyzing your face shape to find the perfect match..." 
-                   : "Upload a selfie. Our AI will analyze your face shape and recommend styles that suit you best."}
-               </p>
+               {!userImage ? (
+                  <>
+                    <h2 className="text-3xl md:text-4xl font-bold mb-4">Let AI Design Your Perfect Look</h2>
+                    <p className="text-slate-300 text-lg mb-8">
+                        Upload a selfie. Our AI will analyze your face shape and recommend styles that suit you best.
+                    </p>
+                  </>
+               ) : (
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-full border-2 border-white overflow-hidden relative">
+                        <img src={`data:image/jpeg;base64,${userImage}`} className="w-full h-full object-cover" alt="User" />
+                    </div>
+                    <div>
+                        <h2 className="text-xl font-bold">Photo Uploaded</h2>
+                        <button 
+                            onClick={() => fileInputRef.current?.click()}
+                            className="text-sm text-pink-300 hover:text-pink-200 underline"
+                        >
+                            Change photo
+                        </button>
+                    </div>
+                  </div>
+               )}
                
                {!userImage && (
                   <div className="relative inline-block group">
@@ -136,15 +171,17 @@ function App() {
                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                        Upload Your Selfie
                     </button>
-                    <input 
-                      ref={fileInputRef}
-                      type="file" 
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    />
                   </div>
                )}
+               
+               {/* Hidden Input for both states */}
+               <input 
+                  ref={fileInputRef}
+                  type="file" 
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className={!userImage ? "absolute inset-0 w-full h-full opacity-0 cursor-pointer" : "hidden"}
+                />
 
                {isAnalyzing && (
                  <div className="mt-6 flex items-center gap-3 text-pink-300 animate-pulse">
@@ -154,12 +191,12 @@ function App() {
                )}
 
                {analysisResult && (
-                 <div className="mt-8 bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 animate-fade-in">
-                    <div className="flex items-center gap-2 mb-2 text-pink-300 font-bold uppercase tracking-wider text-sm">
+                 <div className="mt-6 bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 animate-fade-in">
+                    <div className="flex items-center gap-2 mb-2 text-pink-300 font-bold uppercase tracking-wider text-xs">
                       ✨ Analysis Complete
                     </div>
-                    <div className="text-xl font-bold mb-2">
-                      You have a <span className="text-pink-400">{analysisResult.faceShape}</span> face shape.
+                    <div className="text-lg font-bold mb-1">
+                      Face Shape: <span className="text-pink-400">{analysisResult.faceShape}</span>
                     </div>
                     <p className="text-slate-200 text-sm leading-relaxed">
                       {analysisResult.reasoning}
@@ -173,14 +210,11 @@ function App() {
         {/* Step 1: Style Selection */}
         {!result && !isProcessing && (
             <div ref={stylesSectionRef}>
-                <div className="mb-8 flex items-end justify-between">
+                <div className="mb-6 flex items-end justify-between">
                     <div>
                         <h2 className="text-2xl font-bold text-slate-900">
-                          {analysisResult ? "Recommended For You" : "Trending Styles"}
+                          {analysisResult ? "Recommended Styles" : "Trending Styles"}
                         </h2>
-                        <p className="text-slate-600">
-                          {analysisResult ? "We've highlighted styles that match your face shape." : "Choose a style to try on."}
-                        </p>
                     </div>
                 </div>
 
@@ -220,7 +254,13 @@ function App() {
         {/* Step 3: Results */}
         {(result || isProcessing) && (
             <div className="animate-fade-in">
-                <ResultView result={result!} isLoading={isProcessing} />
+                <ResultView 
+                   result={result!} 
+                   isLoading={isProcessing} 
+                   originalImage={userImage}
+                   styleName={selectedStyle?.name || ''}
+                   faceShape={analysisResult?.faceShape}
+                />
                 
                 {result && selectedStyle && (
                     <SalonFinder styleName={selectedStyle.name} />
