@@ -5,11 +5,13 @@ import { getChatResponse } from '../services/geminiService';
 interface Props {
   styleName: string;
   faceShape?: string;
+  currentImage: string;
+  onImageUpdate: (newUrl: string) => void;
 }
 
-export const ChatConsultant: React.FC<Props> = ({ styleName, faceShape }) => {
+export const ChatConsultant: React.FC<Props> = ({ styleName, faceShape, currentImage, onImageUpdate }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'model', text: `Hi! I'm your AI stylist. How do you feel about the ${styleName}? Ask me about maintenance or styling tips!` }
+    { role: 'model', text: `Hi! I'm your AI stylist. I can help you customize this look. Want it shorter? Different color? Just ask!` }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -32,11 +34,21 @@ export const ChatConsultant: React.FC<Props> = ({ styleName, faceShape }) => {
     setLoading(true);
 
     try {
-      // Exclude the very last user message from history sent to API as it's the "newMessage"
-      const history = messages; 
-      const responseText = await getChatResponse(history, userMsg.text, { styleName, faceShape });
+      // Clean base64 for API (remove data URI prefix if present)
+      const cleanBase64 = currentImage.includes(',') ? currentImage.split(',')[1] : currentImage;
       
-      setMessages(prev => [...prev, { role: 'model', text: responseText }]);
+      const history = messages; 
+      const response = await getChatResponse(history, userMsg.text, { 
+          styleName, 
+          faceShape,
+          currentImageBase64: cleanBase64 
+      });
+      
+      if (response.newImageUrl) {
+          onImageUpdate(response.newImageUrl);
+      }
+
+      setMessages(prev => [...prev, { role: 'model', text: response.text }]);
     } catch (e) {
       setMessages(prev => [...prev, { role: 'model', text: "Sorry, I couldn't process that request." }]);
     } finally {
@@ -54,8 +66,8 @@ export const ChatConsultant: React.FC<Props> = ({ styleName, faceShape }) => {
         <div className="flex items-center gap-2">
             <span className="text-2xl">💬</span>
             <div>
-                <h3 className="font-bold">Stylist Chat</h3>
-                <p className="text-xs text-slate-300">Ask about care & styling</p>
+                <h3 className="font-bold">AI Stylist Chat</h3>
+                <p className="text-xs text-slate-300">Ask to modify styling or get advice</p>
             </div>
         </div>
       </div>
@@ -74,10 +86,13 @@ export const ChatConsultant: React.FC<Props> = ({ styleName, faceShape }) => {
         ))}
         {loading && (
            <div className="flex justify-start">
-             <div className="bg-white rounded-2xl rounded-bl-none px-4 py-3 border border-slate-200 flex gap-1">
-                <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
-                <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-75"></div>
-                <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-150"></div>
+             <div className="bg-white rounded-2xl rounded-bl-none px-4 py-3 border border-slate-200 flex gap-2 items-center text-slate-500 text-xs">
+                <div className="flex gap-1">
+                    <div className="w-2 h-2 bg-pink-400 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-pink-400 rounded-full animate-bounce delay-75"></div>
+                    <div className="w-2 h-2 bg-pink-400 rounded-full animate-bounce delay-150"></div>
+                </div>
+                <span>Styling...</span>
              </div>
            </div>
         )}
@@ -91,7 +106,7 @@ export const ChatConsultant: React.FC<Props> = ({ styleName, faceShape }) => {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Ask about shampoo, wax, or maintenance..."
+            placeholder="e.g., Make it shorter, dye it blonde..."
             className="flex-1 px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-pink-500 bg-slate-50"
           />
           <button 

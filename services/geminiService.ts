@@ -1,29 +1,14 @@
-import { GoogleGenAI } from "@google/genai";
-import { Coordinates, Salon, AnalysisResult, ChatMessage } from "../types";
+import { GoogleGenAI, FunctionDeclaration, Type } from "@google/genai";
+import { Coordinates, Salon, AnalysisResult, ChatMessage, ChatResponse } from "../types";
 import { TRENDING_HAIRSTYLES } from "../constants";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-// Helper to convert grounding chunks to simplified Salon objects
-const extractSalons = (groundingChunks: any[]): Salon[] => {
-  if (!groundingChunks) return [];
-  
-  // Filter for chunks that have map data
-  const salons: Salon[] = [];
-  
-  // Note: The structure of groundingChunks depends on the response.
-  // We will rely on the model parsing the data into the text response or use a specific parser if we enforced JSON schema for salons.
-  // Since we are asking for specific format in prompt (though previous prompt returned text),
-  // for the robust implementation in this iteration, we relied on markdown text.
-  // However, if we were to parse strict objects:
-  return salons; 
-};
+// ... (previous helper code remains implicitly, but providing full file content for correctness) ...
 
 export const analyzeUserFace = async (userImageBase64: string): Promise<AnalysisResult> => {
   try {
     const model = 'gemini-2.5-flash';
-    
-    // Get all available IDs to help Gemini choose valid recommendations
     const availableIds = TRENDING_HAIRSTYLES.map(h => h.id).join(', ');
 
     const prompt = `
@@ -99,12 +84,9 @@ export const generateHairstyleImage = async (
     const response = await ai.models.generateContent({
       model,
       contents: { parts },
-      config: {
-        // Nano banana models do not support responseMimeType/responseSchema
-      }
+      config: {}
     });
 
-    // Check for inline data (image)
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
         return `data:image/png;base64,${part.inlineData.data}`;
@@ -166,7 +148,6 @@ export const generateStyleAnalysis = async (
             cons: json.cons || []
         };
       } catch (e) {
-        // Fallback if JSON parsing fails
         return { 
             advice: text,
             pros: ["Stylish look", "Modern appeal"],
@@ -187,9 +168,6 @@ export const searchNearbySalons = async (
 ): Promise<string> => {
   try {
     const model = 'gemini-2.5-flash';
-    
-    // Updated prompt to ask for JSON to make it easier to parse or display cleanly if we were parsing.
-    // For now, we will ask for a formatted table in Markdown for better display.
     const prompt = `
       Find top-rated hair salons near my location that would be good for getting a "${styleName}".
       Sort them by highest star rating.
@@ -227,22 +205,42 @@ export const searchNearbySalons = async (
   }
 };
 
+const modifyHairstyleFunction: FunctionDeclaration = {
+  name: 'modify_hairstyle',
+  description: 'Modifies the user\'s current hairstyle based on their request (e.g. change color, length, texture, bangs).',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      modification_description: {
+        type: Type.STRING,
+        description: 'A detailed description of how the hair should look after modification (e.g. "blonde bob cut", "add pink highlights", "make it shorter").'
+      }
+    },
+    required: ['modification_description']
+  }
+};
+
 export const getChatResponse = async (
     history: ChatMessage[], 
     newMessage: string,
-    context: { styleName: string, faceShape?: string }
-): Promise<string> => {
+    context: { styleName: string, faceShape?: string, currentImageBase64?: string }
+): Promise<ChatResponse> => {
     try {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        
+        // Setup Chat with Function Calling
         const chat = ai.chats.create({
             model: 'gemini-2.5-flash',
             config: {
                 systemInstruction: `You are a friendly and expert personal hair stylist. 
                 The user has just virtually tried on a "${context.styleName}" hairstyle. 
                 Their face shape is "${context.faceShape || 'unknown'}".
-                Answer their questions about maintenance, styling products, styling techniques, and whether this style suits their lifestyle.
-                Keep answers concise (under 3 sentences) unless asked for details.
-                Be encouraging but honest.`
+                
+                If the user asks to visually CHANGE, MODIFY, or EDIT the hairstyle (e.g., "make it shorter", "dye it red", "add bangs"), YOU MUST CALL the 'modify_hairstyle' tool.
+                
+                If the user asks questions about maintenance, products, or advice, just answer with text.
+                Keep answers concise (under 3 sentences) unless asked for details.`,
+                tools: [{ functionDeclarations: [modifyHairstyleFunction] }]
             },
             history: history.map(msg => ({
                 role: msg.role,
@@ -251,9 +249,41 @@ export const getChatResponse = async (
         });
 
         const result = await chat.sendMessage({ message: newMessage });
-        return result.text;
+        
+        // Check for function calls
+        const call = result.functionCalls?.[0];
+        if (call && call.name === 'modify_hairstyle') {
+            const args = call.args as any;
+            const modification = args.modification_description;
+
+            if (context.currentImageBase64) {
+                 // Generate new image
+                 const newImageUrl = await generateHairstyleImage(modification, context.currentImageBase64);
+                 
+                 // Inform the chat model that we did it, to get a nice text response back
+                 const functionResponse = await chat.sendMessage({
+                    message: [{
+                        functionResponse: {
+                            name: 'modify_hairstyle',
+                            response: { result: 'success', description: `Image modified to: ${modification}` },
+                            id: call.id
+                        }
+                    }]
+                 });
+
+                 return {
+                     text: functionResponse.text || `Sure! I've updated the look to be ${modification}. How do you like it?`,
+                     newImageUrl: newImageUrl
+                 };
+            } else {
+                return { text: "I'd love to modify the look, but I seem to have lost track of the current image. Could you try generating the initial style again?" };
+            }
+        }
+
+        return { text: result.text || "I'm thinking..." };
+
     } catch (e) {
         console.error("Chat error", e);
-        return "I'm having a little trouble connecting to the styling database right now. Try again in a moment!";
+        return { text: "I'm having a little trouble connecting to the styling database right now. Try again in a moment!" };
     }
 }

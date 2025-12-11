@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StylingResult } from '../types';
 import { ChatConsultant } from './ChatConsultant';
 import { StyleCard } from './StyleCard';
@@ -13,6 +13,18 @@ interface Props {
 
 export const ResultView: React.FC<Props> = ({ result, isLoading, originalImage, styleName, faceShape }) => {
   const [showOriginal, setShowOriginal] = useState(false);
+  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+
+  // Sync with prop when result changes (initial generation)
+  useEffect(() => {
+    if (result?.imageUrl) {
+        setCurrentImageUrl(result.imageUrl);
+    }
+  }, [result]);
+
+  const handleImageUpdate = (newUrl: string) => {
+    setCurrentImageUrl(newUrl);
+  };
 
   if (isLoading) {
     return (
@@ -23,7 +35,7 @@ export const ResultView: React.FC<Props> = ({ result, isLoading, originalImage, 
     );
   }
 
-  if (!result.imageUrl) return null;
+  if (!currentImageUrl) return null;
 
   return (
     <div className="space-y-12">
@@ -33,7 +45,7 @@ export const ResultView: React.FC<Props> = ({ result, isLoading, originalImage, 
           {/* Image Section with Toggle */}
           <div className="md:w-1/2 bg-slate-100 relative min-h-[400px] group">
             <img 
-              src={showOriginal && originalImage ? `data:image/jpeg;base64,${originalImage}` : result.imageUrl} 
+              src={showOriginal && originalImage ? `data:image/jpeg;base64,${originalImage}` : currentImageUrl} 
               alt="Styled Result" 
               className="w-full h-full object-cover transition-opacity duration-300"
             />
@@ -97,7 +109,7 @@ export const ResultView: React.FC<Props> = ({ result, isLoading, originalImage, 
             <div className="mt-8 pt-6 border-t border-slate-100">
                <div className="flex items-center gap-3 text-slate-500 text-sm">
                   <svg className="w-5 h-5 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  <span>Use the chat below for detailed care instructions.</span>
+                  <span>Use the chat below to customize or adjust this look!</span>
                </div>
             </div>
           </div>
@@ -111,7 +123,7 @@ export const ResultView: React.FC<Props> = ({ result, isLoading, originalImage, 
             <p className="text-slate-500">Show off your new style to your friends or save it for later.</p>
         </div>
         <StyleCard 
-            imageUrl={result.imageUrl} 
+            imageUrl={currentImageUrl} 
             styleName={styleName} 
             faceShape={faceShape} 
         />
@@ -119,7 +131,12 @@ export const ResultView: React.FC<Props> = ({ result, isLoading, originalImage, 
 
       {/* Chat Section */}
       <div className="grid grid-cols-1 md:grid-cols-1 gap-8">
-         <ChatConsultant styleName={styleName} faceShape={faceShape} />
+         <ChatConsultant 
+            styleName={styleName} 
+            faceShape={faceShape} 
+            currentImage={currentImageUrl}
+            onImageUpdate={handleImageUpdate}
+         />
       </div>
     </div>
   );
